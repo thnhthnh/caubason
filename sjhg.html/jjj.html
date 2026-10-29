@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Mô Hình 3D Cầu Ba Son - Chuẩn Vị Trí Cũ</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #ui-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            z-index: 100;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .btn-group {
+            display: flex;
+            gap: 5px;
+            background: rgba(0, 0, 0, 0.65);
+            padding: 6px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+            pointer-events: auto;
+        }
+        button {
+            background: #2c3e50;
+            color: #fff;
+            border: 1px solid #455a64;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        button.active {
+            background: #0088cc;
+            border-color: #00aaff;
+        }
+        @media (max-width: 600px) {
+            button {
+                padding: 6px 8px;
+                font-size: 11px;
+            }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <div class="btn-group">
+            <button id="btn-cam-1" class="active" onclick="setView(1)">Hình 1: Toàn cảnh</button>
+            <button id="btn-cam-2" onclick="setView(2)">Hình 2: Mặt bên</button>
+            <button id="btn-cam-3" onclick="setView(3)">Hình 3: Từ trên xuống</button>
+            <button id="btn-cam-4" onclick="setView(4)">Hình 4: Trực diện trụ</button>
+        </div>
+        <div class="btn-group">
+            <button id="btn-day" onclick="setEnvironment('day')">Buổi sáng</button>
+            <button id="btn-night" class="active" onclick="setEnvironment('night')">Buổi tối</button>
+            <button id="btn-light-on" class="active" onclick="setLighting(true)">Bật đèn</button>
+            <button id="btn-light-off" onclick="setLighting(false)">Không bật đèn</button>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('canvas-container');
+            const scene = new THREE.Scene();
+            
+            const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 2500);
+            
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.01;
+
+            // LIGHTING
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+            sunLight.position.set(100, 150, 50);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            scene.add(sunLight);
+
+            let isNight = true;
+            let isLightOn = true;
+
+            // MATERIALS
+            const matConcrete = new THREE.MeshStandardMaterial({ color: 0xdcdcdc, roughness: 0.4 });
+            const matRoad = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
+            const matWater = new THREE.MeshStandardMaterial({ color: 0x112b3c, roughness: 0.1, metalness: 0.8 });
+            const matGround = new THREE.MeshStandardMaterial({ color: 0x1b241a, roughness: 0.9 });
+            const matCable = new THREE.MeshStandardMaterial({ color: 0xfbfeff, roughness: 0.2 });
+            const matRailing = new THREE.MeshStandardMaterial({ color: 0xd0d0d0, roughness: 0.3 });
+
+            const matBuildingDark = new THREE.MeshStandardMaterial({ color: 0x1a1c23, roughness: 0.6 });
+            const matBuildingGlass = new THREE.MeshStandardMaterial({ color: 0x00adb5, roughness: 0.2, emissive: 0x006688, emissiveIntensity: 0.9 });
+            const matBuildingWarm = new THREE.MeshStandardMaterial({ color: 0x2a2421, roughness: 0.5, emissive: 0xffaa33, emissiveIntensity: 0.7 });
+
+            // ĐỊA HÌNH SÔNG & BỜ ĐẤT (ĐẶT Ở Y = 0 ĐỂ CẦU NẰM ĐÚNG MẶT PHẲNG)
+            const envGroup = new THREE.Group();
+            scene.add(envGroup);
+
+            const riverWidth = 160;
+
+            const riverGeo = new THREE.PlaneGeometry(riverWidth, 1600);
+            const river = new THREE.Mesh(riverGeo, matWater);
+            river.rotation.x = -Math.PI / 2;
+            river.position.set(0, -0.2, 0);
+            envGroup.add(river);
+
+            const bank1Geo = new THREE.PlaneGeometry(600, 1600);
+            const bank1 = new THREE.Mesh(bank1Geo, matGround);
+            bank1.rotation.x = -Math.PI / 2;
+            bank1.position.set(-riverWidth / 2 - 300, 0, 0);
+            envGroup.add(bank1);
+
+            const bank2Geo = new THREE.PlaneGeometry(600, 1600);
+            const bank2 = new THREE.Mesh(bank2Geo, matGround);
+            bank2.rotation.x = -Math.PI / 2;
+            bank2.position.set(riverWidth / 2 + 300, 0, 0);
+            envGroup.add(bank2);
+
+            // CỤM TÒA NHÀ SKYLINE (DỜI LÙI XA)
+            const cityscapeGroup = new THREE.Group();
+            scene.add(cityscapeGroup);
+
+            for (let z = -600; z <= 600; z += 55) {
+                if (Math.abs(z) < 40) continue;
+                const height = 50 + Math.random() * 95;
+                const width = 16 + Math.random() * 12;
+                const depth = 16 + Math.random() * 12;
+                const mat = (Math.random() > 0.3) ? matBuildingGlass : matBuildingWarm;
+                const bMesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
+                bMesh.position.set(-riverWidth / 2 - 90 - (Math.random() * 150), height / 2, z);
+                cityscapeGroup.add(bMesh);
+            }
+
+            const landmark = new THREE.Mesh(new THREE.ConeGeometry(8, 180, 16), matBuildingGlass);
+            landmark.position.set(-riverWidth / 2 - 140, 90, -150);
+            cityscapeGroup.add(landmark);
+
+            for (let z = -500; z <= 500; z += 60) {
+                if (Math.abs(z) < 40) continue;
+                const height = 30 + Math.random() * 55;
+                const width = 16 + Math.random() * 12;
+                const depth = 16 + Math.random() * 12;
+                const bMesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), matBuildingDark);
+                bMesh.position.set(riverWidth / 2 + 90 + (Math.random() * 100), height / 2, z);
+                cityscapeGroup.add(bMesh);
+            }
+
+            // CẦU BA SON (ĐẶT Ở Y = 0 CHUẨN XÁC)
+            const bridgeGroup = new THREE.Group();
+            scene.add(bridgeGroup);
+
+            const bridgeWidth = 22;
+            const bridgeLength = 360;
+            const towerBaseX = 45; 
+            const towerHeight = 72;
+            const topArchWidth = 6.0;
+
+            const deckGeo = new THREE.BoxGeometry(bridgeLength, 1.8, bridgeWidth);
+            const deck = new THREE.Mesh(deckGeo, matRoad);
+            deck.position.set(0, 0, 0);
+            deck.receiveShadow = true;
+            bridgeGroup.add(deck);
+
+            const railingGeo = new THREE.BoxGeometry(bridgeLength, 0.8, 0.3);
+            const railingLeft = new THREE.Mesh(railingGeo, matRailing);
+            railingLeft.position.set(0, 1.3, bridgeWidth / 2);
+            bridgeGroup.add(railingLeft);
+
+            const railingRight = new THREE.Mesh(railingGeo, matRailing);
+            railingRight.position.set(0, 1.3, -bridgeWidth / 2);
+            bridgeGroup.add(railingRight);
+
+            const towerGroup = new THREE.Group();
+            towerGroup.position.set(towerBaseX, 0, 0);
+
+            class TaperedTowerCurve extends THREE.Curve {
+                constructor(sideSign) {
+                    super();
+                    this.sideSign = sideSign;
+                }
+                getPoint(t) {
+                    const y = t * towerHeight;
+                    const leanX = -Math.pow(t, 1.35) * 18; 
+                    const currentWidth = (bridgeWidth / 2) * (1 - t) + (topArchWidth / 2) * t;
+                    const z = currentWidth * this.sideSign;
+                    return new THREE.Vector3(leanX, y, z);
+                }
+            }
+
+            const legRadius = 1.3;
+            const tubeSegments = 60;
+            const leftCurve = new TaperedTowerCurve(1);
+            const rightCurve = new TaperedTowerCurve(-1);
+
+            towerGroup.add(new THREE.Mesh(new THREE.TubeGeometry(leftCurve, tubeSegments, legRadius, 16, false), matConcrete));
+            towerGroup.add(new THREE.Mesh(new THREE.TubeGeometry(rightCurve, tubeSegments, legRadius, 16, false), matConcrete));
+
+            const topPointLeft = leftCurve.getPoint(1);
+            const arch = new THREE.Mesh(new THREE.TorusGeometry(topArchWidth / 2, legRadius, 16, 32, Math.PI), matConcrete);
+            arch.position.set(topPointLeft.x, topPointLeft.y, 0);
+            arch.rotation.y = Math.PI / 2;
+            towerGroup.add(arch);
+
+            bridgeGroup.add(towerGroup);
+
+            const pier = new THREE.Mesh(new THREE.BoxGeometry(12, 16, bridgeWidth + 4), matConcrete);
+            pier.position.set(towerBaseX + 3, -8, 0);
+            bridgeGroup.add(pier);
+
+            const cablesGroup = new THREE.Group();
+            bridgeGroup.add(cablesGroup);
+
+            function addCable(startPt, endPt) {
+                const dist = startPt.distanceTo(endPt);
+                const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, dist, 8), matCable);
+                cable.position.copy(startPt).add(endPt).multiplyScalar(0.5);
+                cable.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), endPt.clone().sub(startPt).normalize());
+                cablesGroup.add(cable);
+            }
+
+            for (let i = 0; i < 14; i++) {
+                const tRatio = 0.28 + (i / 13) * 0.68;
+                const tPointL = leftCurve.getPoint(tRatio);
+                const tPointR = rightCurve.getPoint(tRatio);
+
+                const attachLeft = new THREE.Vector3(towerBaseX + tPointL.x, tPointL.y, tPointL.z);
+                const attachRight = new THREE.Vector3(towerBaseX + tPointR.x, tPointR.y, tPointR.z);
+
+                const frontX = towerBaseX - 10 - (i * 9.5);
+                addCable(attachLeft, new THREE.Vector3(frontX, 0.9, bridgeWidth / 2));
+                addCable(attachRight, new THREE.Vector3(frontX, 0.9, -bridgeWidth / 2));
+
+                const backX = towerBaseX + 6 + (i * 5.2);
+                addCable(attachLeft, new THREE.Vector3(backX, 0.9, bridgeWidth / 2));
+                addCable(attachRight, new THREE.Vector3(backX, 0.9, -bridgeWidth / 2));
+            }
+
+            // GẮN HÀM GLOBAL CHO NÚT BẤM
+            window.setView = function(v) {
+                document.querySelectorAll('#ui-panel .btn-group:first-child button').forEach(b => b.classList.remove('active'));
+                const btn = document.getElementById('btn-cam-${v}');
+                if (btn) btn.classList.add('active');
+
+                switch(v) {
+                    case 1: animateCamera(new THREE.Vector3(-180, 85, 140), new THREE.Vector3(0, 15, 0)); break;
+                    case 2: animateCamera(new THREE.Vector3(0, 25, 230), new THREE.Vector3(0, 20, 0)); break;
+                    case 3: animateCamera(new THREE.Vector3(0, 280, 0.1), new THREE.Vector3(0, 0, 0)); break;
+                    case 4: animateCamera(new THREE.Vector3(-110, 15, 0), new THREE.Vector3(towerBaseX, 32, 0)); break;
+                }
+            };
+
+            function animateCamera(targetPos, targetLookAt) {
+                const startPos = camera.position.clone();
+                const startLookAt = controls.target.clone();
+                let progress = 0;
+
+                function step() {
+                    progress += 0.04;
+                    if (progress <= 1) {
+                        camera.position.lerpVectors(startPos, targetPos, progress);
+                        controls.target.lerpVectors(startLookAt, targetLookAt, progress);
+                        controls.update();
+                        requestAnimationFrame(step);
+                    } else {
+                        camera.position.copy(targetPos);
+                        controls.target.copy(targetLookAt);
+                    }
+                }
+                step();
+            }
+
+            window.setEnvironment = function(env) {
+                isNight = (env === 'night');
+                document.getElementById('btn-day').classList.toggle('active', !isNight);
+                document.getElementById('btn-night').classList.toggle('active', isNight);
+
+                if (isNight) {
+                    scene.background = new THREE.Color(0x120e1a);
+                    scene.fog = new THREE.FogExp2(0x120e1a, 0.001);
+                    ambientLight.intensity = 0.3;
+                    sunLight.intensity = 0.3;
+                    sunLight.color.set(0xff6622);
+                    matBuildingGlass.emissiveIntensity = 1.0;
+                    matBuildingWarm.emissiveIntensity = 0.8;
+                } else {
+                    scene.background = new THREE.Color(0x87ceeb);
+                    scene.fog = new THREE.FogExp2(0x87ceeb, 0.0008);
+                    ambientLight.intensity = 0.85;
+                    sunLight.intensity = 1.2;
+                    sunLight.color.set(0xfff5e6);
+                    matBuildingGlass.emissiveIntensity = 0.2;
+                    matBuildingWarm.emissiveIntensity = 0.1;
+                }
+                updateLightingEffects();
+            };
+
+            window.setLighting = function(on) {
+                isLightOn = on;
+                document.getElementById('btn-light-on').classList.toggle('active', isLightOn);
+                document.getElementById('btn-light-off').classList.toggle('active', !isLightOn);
+                updateLightingEffects();
+            };
+
+            function updateLightingEffects() {
+                if (isLightOn) {
+                    matCable.emissive = new THREE.Color(0xffffff);
+                    matCable.emissiveIntensity = isNight ? 1.3 : 0.4;
+                    matRailing.emissive = new THREE.Color(0xffffff);
+                    matRailing.emissiveIntensity = isNight ? 1.0 : 0.3;
+                } else {
+                    matCable.emissive = new THREE.Color(0x000000);
+                    matCable.emissiveIntensity = 0;
+                    matRailing.emissive = new THREE.Color(0x000000);
+                    matRailing.emissiveIntensity = 0;
+                }
+            }
+
+            setEnvironment('night');
+            setLighting(true);
+            setView(1);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+        });
+    </script>
+</body>
+</html>
